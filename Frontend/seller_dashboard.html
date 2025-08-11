@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seller Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .container { max-width: 1200px; margin: auto; padding: 2rem; }
+        .card { background-color: #ffffff; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
+        .hidden { display: none; }
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        .tab-button.active {
+            border-color: #4f46e5;
+            color: #4f46e5;
+        }
+    </style>
+</head>
+<body>
+    <div id="login-page" class="flex flex-col items-center justify-center min-h-screen">
+        <div class="card w-full max-w-md">
+            <h2 class="text-3xl font-bold text-center mb-6" id="form-title">Seller Login</h2>
+            <form id="seller-form" class="space-y-4">
+                <input type="text" id="store-name-input" placeholder="Store Name (for registration)" class="w-full p-2 border rounded" style="display: none;">
+                <input type="email" id="email-input" placeholder="Email" class="w-full p-2 border rounded" required>
+                <input type="password" id="password-input" placeholder="Password" class="w-full p-2 border rounded" required>
+                <button type="submit" class="w-full bg-indigo-600 text-white p-2 rounded">Login</button>
+            </form>
+            <p id="form-message" class="text-sm text-center mt-4"></p>
+            <button id="toggle-form-btn" class="w-full text-sm text-indigo-600 mt-4">Switch to Register</button>
+        </div>
+    </div>
+
+    <div id="dashboard-page" class="container hidden">
+        <header class="mb-8">
+            <h1 class="text-4xl font-bold text-gray-800">Seller Dashboard</h1>
+            <p class="text-gray-600">Welcome, <span id="seller-store-name"></span>!</p>
+            <button id="logout-btn" class="bg-gray-200 text-gray-800 p-2 rounded mt-4">Logout</button>
+        </header>
+
+        <div class="card p-0 mb-8">
+            <div class="flex border-b border-gray-200">
+                <button class="tab-button active" id="products-tab-btn">Your Products</button>
+                <button class="tab-button" id="notifications-tab-btn">Notifications</button>
+            </div>
+        </div>
+
+        <section id="products-section" class="card tab-content">
+            <h2 class="text-2xl font-semibold mb-4">Your Products</h2>
+            <div id="product-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <p class="text-gray-500">Loading products...</p>
+            </div>
+        </section>
+    
+        <section id="notifications-section" class="card tab-content hidden">
+            <h2 class="text-2xl font-semibold mb-4">Real-time Notifications</h2>
+            <ul id="notification-feed" class="space-y-4">
+                <p class="text-gray-500">Connecting to notifications stream...</p>
+            </ul>
+        </section>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000/api';
+        let currentSellerId = localStorage.getItem('seller_id');
+        let currentStoreName = localStorage.getItem('store_name');
+
+        const loginPage = document.getElementById('login-page');
+        const dashboardPage = document.getElementById('dashboard-page');
+        const formTitle = document.getElementById('form-title');
+        const sellerForm = document.getElementById('seller-form');
+        const toggleFormBtn = document.getElementById('toggle-form-btn');
+        const storeNameInput = document.getElementById('store-name-input');
+        const emailInput = document.getElementById('email-input');
+        const passwordInput = document.getElementById('password-input');
+        const formMessage = document.getElementById('form-message');
+        const logoutBtn = document.getElementById('logout-btn');
+        const productsTabBtn = document.getElementById('products-tab-btn');
+        const notificationsTabBtn = document.getElementById('notifications-tab-btn');
+        const productsSection = document.getElementById('products-section');
+        const notificationsSection = document.getElementById('notifications-section');
+        const notificationFeed = document.getElementById('notification-feed');
+
+        let isRegistering = false;
+        let eventSource = null;
+
+        // --- Helper function to handle unauthorized access gracefully ---
+        function handleUnauthorized() {
+            localStorage.removeItem('seller_id');
+            localStorage.removeItem('store_name');
+            currentSellerId = null;
+            currentStoreName = null;
+            if (eventSource) {
+                eventSource.close();
+            }
+            // Redirect to login page and show the login form
+            window.location.href = 'login.html';
+        }
+
+        async function fetchProducts() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/seller/products`);
+                if (response.status === 401) {
+                    handleUnauthorized();
+                    return;
+                }
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const products = await response.json();
+                renderProducts(products.products);
+            } catch (error) {
+                console.error("Failed to fetch products:", error);
+                document.getElementById('product-list').innerHTML = `<p class="text-red-500">Failed to load products.</p>`;
+            }
+        }
+        
+        function connectToSseStream() {
+            if (eventSource) {
+                eventSource.close();
+            }
+
+            eventSource = new EventSource(`${API_BASE_URL}/seller/sse`);
+
+            eventSource.onopen = function(event) {
+                console.log("SSE connection opened.");
+                // Clear the "Connecting" message on successful open
+                if (notificationFeed) {
+                    notificationFeed.innerHTML = '';
+                }
+            };
+
+            eventSource.onmessage = function(event) {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data && data.content) {
+                        const notificationItem = document.createElement('li');
+                        notificationItem.className = 'bg-gray-50 p-4 rounded-lg shadow-sm text-sm';
+                        notificationItem.innerHTML = `
+                            ${data.content}
+                            <span class="block text-xs text-gray-400 mt-1">${new Date(data.timestamp).toLocaleString()}</span>
+                        `;
+                        if (notificationFeed) {
+                            notificationFeed.prepend(notificationItem);
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error parsing SSE message:", e, "Data:", event.data);
+                }
+            };
+
+            eventSource.onerror = function(error) {
+                console.error('SSE Error:', error);
+                if (eventSource.readyState === EventSource.CLOSED) {
+                    console.log("SSE connection closed. Attempting to reconnect in 5s...");
+                    if (notificationFeed) {
+                        notificationFeed.innerHTML = '<p class="text-gray-500">Connection lost. Reconnecting...</p>';
+                    }
+                    setTimeout(connectToSseStream, 5000);
+                }
+            };
+        }
+
+        function renderProducts(products) {
+            const productListContainer = document.getElementById('product-list');
+            if (!productListContainer) return;
+
+            productListContainer.innerHTML = '';
+            if (products.length === 0) {
+                productListContainer.innerHTML = `<p class="text-gray-500 col-span-full">You have no products listed.</p>`;
+                return;
+            }
+            products.forEach(product => {
+                productListContainer.innerHTML += `
+                    <div class="bg-gray-50 p-4 rounded-lg shadow-sm">
+                        <h3 class="text-lg font-semibold">${product.name}</h3>
+                        <p class="text-sm text-gray-600">Category: ${product.category}</p>
+                        <p class="text-xl font-bold text-indigo-600 mt-2">$${product.price.toFixed(2)}</p>
+                    </div>
+                `;
+            });
+        }
+
+        function showPage(page) {
+            if (loginPage) loginPage.style.display = page === 'login' ? 'flex' : 'none';
+            if (dashboardPage) dashboardPage.style.display = page === 'dashboard' ? 'block' : 'none';
+        }
+
+        function switchTab(tab) {
+            if (tab === 'products') {
+                if (productsTabBtn) productsTabBtn.classList.add('active');
+                if (notificationsTabBtn) notificationsTabBtn.classList.remove('active');
+                if (productsSection) productsSection.classList.remove('hidden');
+                if (notificationsSection) notificationsSection.classList.add('hidden');
+            } else {
+                if (notificationsTabBtn) notificationsTabBtn.classList.add('active');
+                if (productsTabBtn) productsTabBtn.classList.remove('active');
+                if (notificationsSection) notificationsSection.classList.remove('hidden');
+                if (productsSection) productsSection.classList.add('hidden');
+            }
+        }
+        
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+            if (formMessage) formMessage.textContent = '';
+            const email = emailInput.value;
+            const password = passwordInput.value;
+            const store_name = storeNameInput.value;
+            let endpoint = '';
+            let body = {};
+            if (isRegistering) {
+                endpoint = '/seller/register';
+                body = { store_name, email, password };
+            } else {
+                endpoint = '/login';
+                body = { email, password, role: 'seller' };
+            }
+
+            try {
+                const response = await fetch(API_BASE_URL + endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    currentSellerId = result.user.id;
+                    currentStoreName = result.user.username;
+                    localStorage.setItem('seller_id', currentSellerId);
+                    localStorage.setItem('store_name', currentStoreName);
+                    if (formMessage) formMessage.textContent = result.message;
+                    if (document.getElementById('seller-store-name')) document.getElementById('seller-store-name').textContent = currentStoreName;
+                    showPage('dashboard');
+                    await fetchProducts(); 
+                    connectToSseStream();
+                } else {
+                    if (formMessage) formMessage.textContent = result.message;
+                }
+            } catch (error) {
+                if (formMessage) formMessage.textContent = 'An unexpected error occurred.';
+                console.error('Error:', error);
+            }
+        }
+
+        function handleLogout() {
+            fetch(`${API_BASE_URL}/logout`, { method: 'POST' })
+                .then(() => {
+                    handleUnauthorized();
+                })
+                .catch(error => {
+                    console.error("Error during logout:", error);
+                    handleUnauthorized();
+                });
+        }
+
+        function toggleForm() {
+            isRegistering = !isRegistering;
+            if (isRegistering) {
+                if (formTitle) formTitle.textContent = 'Seller Registration';
+                if (toggleFormBtn) toggleFormBtn.textContent = 'Switch to Login';
+                if (storeNameInput) storeNameInput.style.display = 'block';
+                if (sellerForm) sellerForm.querySelector('button').textContent = 'Register';
+            } else {
+                if (formTitle) formTitle.textContent = 'Seller Login';
+                if (toggleFormBtn) toggleFormBtn.textContent = 'Switch to Register';
+                if (storeNameInput) storeNameInput.style.display = 'none';
+                if (sellerForm) sellerForm.querySelector('button').textContent = 'Login';
+            }
+        }
+        
+        // Add listeners with null checks
+        if (sellerForm) sellerForm.addEventListener('submit', handleFormSubmit);
+        if (toggleFormBtn) toggleFormBtn.addEventListener('click', toggleForm);
+        if (logoutBtn) logoutBtn.addEventListener('click', handleLogout);
+        if (productsTabBtn) productsTabBtn.addEventListener('click', () => switchTab('products'));
+        if (notificationsTabBtn) notificationsTabBtn.addEventListener('click', () => switchTab('notifications'));
+
+        // Main check on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            if (currentSellerId && currentStoreName) {
+                if (document.getElementById('seller-store-name')) document.getElementById('seller-store-name').textContent = currentStoreName;
+                showPage('dashboard');
+                await fetchProducts();
+                connectToSseStream();
+            } else {
+                showPage('login');
+            }
+        });
+    </script>
+</body>
+</html>

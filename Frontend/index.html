@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraMart - Your Modern Online Store</title>
+    <link rel="stylesheet" href="webpage.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Playfair+Display:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="app" class="flex flex-col min-h-screen">
+        <header class="header">
+            <a href="#" class="logo">AuraMart</a>
+            <div class="header-links-right flex items-center gap-4">
+                <button id="sign-out-btn" class="text-gray-600 hover:text-[#a55447] text-lg font-semibold">Sign Out</button>
+                <button id="cart-icon" class="icon-btn">
+                    🛒
+                    <span id="cart-count" class="cart-count hidden">0</span>
+                </button>
+            </div>
+        </header>
+
+        <main class="flex-grow">
+            <div id="main-page" class="main-content">
+                <section class="hero-section">
+                    <div class="hero-content">
+                        <h1>Discover Your Style</h1>
+                        <p>Explore curated collections and unique finds from independent sellers.</p>
+                        <a href="#stores" class="btn-cta inline-block">Shop Now</a>
+                    </div>
+                </section>
+
+                <h2 class="text-4xl font-bold mb-6">Explore by Store</h2>
+                <div id="categories-container" class="category-grid">
+                    </div>
+
+                <h2 class="text-4xl font-bold mb-6">Featured Products</h2>
+                <div id="product-list" class="product-grid">
+                    </div>
+            </div>
+
+            <div id="stores-page" class="main-content hidden">
+                <div class="flex items-center mb-6">
+                    <button id="back-to-main-btn-store" class="btn-secondary mr-4">← Back</button>
+                    <h1 id="store-page-title" class="text-5xl font-bold flex-grow text-center"></h1>
+                    <div class="ml-auto flex items-center">
+                        <button id="cart-icon-store" class="icon-btn">
+                            🛒
+                            <span id="cart-count-store" class="cart-count hidden">0</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="store-product-list" class="product-grid">
+                    </div>
+            </div>
+
+            <div id="category-page" class="main-content hidden">
+                <div class="flex items-center mb-6">
+                    <button id="back-to-main-btn-category" class="btn-secondary mr-4">← Back</button>
+                    <h1 id="category-page-title" class="text-5xl font-bold flex-grow text-center"></h1>
+                    <div class="ml-auto flex items-center">
+                        <button id="cart-icon-category" class="icon-btn">
+                            🛒
+                            <span id="cart-count-category" class="cart-count hidden">0</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="category-product-list" class="product-grid">
+                    </div>
+            </div>
+
+            <div id="product-detail-page" class="main-content hidden">
+                <div class="flex items-center mb-6">
+                    <button id="back-from-detail-btn" class="btn-secondary mr-4">← Back</button>
+                    <h1 id="product-detail-name" class="text-5xl font-bold"></h1>
+                </div>
+                <div id="product-detail-content" class="md:flex md:gap-8">
+                    <div class="md:w-1/2 product-image-gallery">
+                        <div class="main-image-container">
+                            <img id="product-image" src="" alt="Product Image">
+                        </div>
+                        <div id="thumbnail-gallery" class="flex gap-2 mt-4 justify-center">
+                            </div>
+                    </div>
+                    <div class="md:w-1/2 mt-8 md:mt-0">
+                        <h2 id="product-name" class="text-5xl font-bold mb-2"></h2>
+                        <p id="product-category" class="text-xl text-gray-500 mb-4"></p>
+                        <p id="product-price" class="text-6xl font-bold text-[#a55447] mb-6">$0.00</p>
+                        <p id="product-description" class="text-lg mb-6"></p>
+                        <button id="detail-add-to-cart-btn" class="btn-primary text-2xl w-full mb-4">Add to Cart</button>
+                        
+                        <div id="default-details-section" class="mb-8">
+                            <h5 class="text-xl font-bold mb-4">Quick Details</h5>
+                            <ul class="list-disc list-inside space-y-2 text-lg">
+                                <li>Delivery: 5-7 business days</li>
+                                <li>Quantity: In Stock</li>
+                                <li>Highlights: Premium quality fabric</li>
+                            </ul>
+                            <p class="text-gray-600 mt-4"><strong>Important Note:</strong> This is a mock detail. Real product information would be here.</p>
+                        </div>
+                        <button id="toggle-details-btn" class="btn-secondary text-xl w-full">Show All Details</button>
+                        <div id="all-details-section" class="mt-8 p-6 bg-white rounded-lg shadow-sm hidden">
+                            </div>
+                        
+                        <div id="reviews-section" class="mt-8">
+                            <h3 class="text-4xl font-bold mb-4">Customer Reviews</h3>
+                            <div id="reviews-display-area" class="space-y-4 mb-6"></div>
+                            <button id="view-reviews-btn" class="btn btn-secondary text-xl">View All Reviews</button>
+                            <h4 class="3xl font-bold mt-8 mb-4">Submit Your Review</h4>
+                            <div class="flex items-center mb-4">
+                                <label for="review-rating" class="mr-2">Rating:</label>
+                                <select id="review-rating" class="form-control w-auto">
+                                    <option value="5">5 Stars</option>
+                                    <option value="4">4 Stars</option>
+                                    <option value="3">3 Stars</option>
+                                    <option value="2">2 Stars</option>
+                                    <option value="1">1 Star</option>
+                                </select>
+                            </div>
+                            <textarea id="review-text" class="form-control" rows="4" placeholder="Write your review here..."></textarea>
+                            <button id="submit-review-btn" class="btn btn-primary text-xl mt-4">Submit Review</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="cart-page" class="main-content hidden">
+                <div class="flex items-center mb-6">
+                    <button id="back-to-main-btn-cart" class="btn-secondary mr-4">← Back</button>
+                    <h1 class="text-5xl font-bold">Your Cart</h1>
+                </div>
+                <div id="empty-cart-message" class="text-center text-gray-500 text-2xl mt-12">Your cart is empty.</div>
+                <div id="cart-summary" class="hidden">
+                    <div id="cart-items-container" class="space-y-4">
+                        </div>
+                    <div class="flex justify-end items-center mt-8 p-6 bg-white rounded-lg shadow-md">
+                        <p class="text-2xl font-bold mr-4">Total: $<span id="cart-total">0.00</span></p>
+                        <button id="checkout-btn" class="btn-primary text-2xl px-8 py-3">Checkout</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <div id="image-viewer">
+            <button id="image-viewer-close-btn" class="close-btn">×</button>
+            <div class="slider-container">
+                <button id="slider-prev-btn" class="slider-btn prev-btn hidden">‹</button>
+                <div id="slider-images-wrapper">
+                    </div>
+                <button id="slider-next-btn" class="slider-btn next-btn hidden">›</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="webpage.js"></script>
+</body>
+</html>
