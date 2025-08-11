@@ -1,0 +1,127 @@
+import functions_framework
+import datetime
+import json
+import os
+from flask_cors import cross_origin
+
+# Do NOT import google.cloud libraries at the top level here.
+# They will be imported inside the function to avoid the fork() error.
+
+# --- Cloud Function: Event Enricher for details_of_product ---
+@functions_framework.http
+@cross_origin()
+def process_details_of_product_event(request):
+    """
+    Processes a product details view event from an HTTP request.
+    Initializes BigQuery and Pub/Sub clients within the function scope.
+    """
+    # --- IMPORTANT: Move all imports and client initialization HERE ---
+    from google.cloud import bigquery, pubsub_v1
+    from google.oauth2 import service_account
+
+    # --- CONFIGURATION (local to the function) ---
+    PROJECT_ID = os.environ.get('GCP_PROJECT_ID', 'svaraflow')
+    DATASET_ID = os.environ.get('BIGQUERY_DATASET_ID', 'seller1_data')
+    EVENT_TABLE_ID = os.environ.get('BIGQUERY_TABLE_ID_PRODUCT_DETAILS', 'details_of_product')
+    NOTIFICATION_TOPIC_ID = 'seller-notifications-topic'
+    SERVICE_ACCOUNT_KEY_PATH = "key.json"
+
+    client = None
+    event_table_ref = None
+    pubsub_publisher = None
+    notification_topic_path = None
+
+    try:
+        credentials = service_account.Credentials.from_service_account_file(
+            SERVICE_ACCOUNT_KEY_PATH, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        client = bigquery.Client(project=PROJECT_ID, credentials=credentials)
+        event_table_ref = client.dataset(DATASET_ID).table(EVENT_TABLE_ID)
+        pubsub_publisher = pubsub_v1.PublisherClient(credentials=credentials)
+        notification_topic_path = pubsub_publisher.topic_path(PROJECT_ID, NOTIFICATION_TOPIC_ID)
+        print("DEBUG: BigQuery and Pub/Sub clients initialized within function scope.")
+    except Exception as e:
+        print(f"ERROR: Failed to initialize clients within function: {e}")
+        return json.dumps({"status": "error", "message": "Cloud client initialization failed."}), 500
+
+    # --- REST OF YOUR FUNCTION LOGIC ---
+    response_headers = {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
+    }
+
+    if client is None or event_table_ref is None or pubsub_publisher is None:
+        return json.dumps({"status": "error", "message": "BigQuery or Pub/Sub client not ready."}), 500, response_headers
+
+    if request.method == 'OPTIONS':
+        return ('', 204, response_headers)
+
+    if request.method != 'POST':
+        return json.dumps({"status": "error", "message": "Method Not Allowed"}), 405, response_headers
+        
+    if not request.is_json:
+        return json.dumps({"status": "error", "message": "Request body must be JSON"}), 400, response_headers
+
+    try:
+        event_data = request.get_json()
+
+        # --- VALIDATION for REQUIRED fields from the schema ---
+        required_top_level = ['event_name', 'event_timestamp', 'session_id', 'page_location']
+        if not all(field in event_data for field in required_top_level):
+            return json.dumps({"status": "error", "message": "Missing required top-level fields."}), 400, response_headers
+        if event_data.get('event_name') != 'details_of_product':
+            return json.dumps({"status": "error", "message": "Event name mismatch."}), 400, response_headers
+        if not event_data.get('item', {}).get('item_id') or not event_data.get('seller_id'):
+            return json.dumps({"status": "error", "message": "Missing required 'item_id' or 'seller_id'."}), 400, response_headers
+
+        row_to_insert = {
+            "event_name": event_data.get('event_name', 'details_of_product'),
+            "event_timestamp": event_data.get('event_timestamp'),
+            "ingestion_timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "user_id": event_data.get('user_id'),
+            "session_id": event_data.get('session_id'),
+            "page_location": event_data.get('page_location'),
+            "page_title": event_data.get('page_title'),
+            "page_duration_seconds": event_data.get('page_duration_seconds'),
+            "seller_id": event_data.get('seller_id'),
+            "store_name": event_data.get('store_name'),
+            "item": {
+                "item_id": event_data.get('item', {}).get('item_id'),
+                "item_name": event_data.get('item', {}).get('item_name'),
+                "item_category": event_data.get('item', {}).get('item_category'),
+                "price": event_data.get('item', {}).get('price'),
+                "item_brand": event_data.get('item', {}).get('item_brand'),
+                "item_variant": event_data.get('item', {}).get('item_variant')
+            },
+            "device": event_data.get('device'),
+            "geo": event_data.get('geo'),
+            "traffic_source": event_data.get('traffic_source'),
+        }
+
+        errors = client.insert_rows_json(event_table_ref, [row_to_insert])
+        
+        if errors:
+            print(f"BigQuery insert errors detail: {errors}")
+            return json.dumps({"status": "error", "errors": errors}), 500, response_headers
+        
+        # --- NEW: Publish a message to the notification topic ---
+        seller_id = event_data.get('seller_id')
+        store_name = event_data.get('store_name')
+        if seller_id and store_name:
+            notification_payload = {
+                "seller_id": seller_id,
+                "store_name": store_name,
+                "event_name": event_data.get('event_name'),
+                "item_id": event_data.get('item', {}).get('item_id'),
+                "message": f"A customer viewed details for your product: {event_data.get('item', {}).get('item_name')}"
+            }
+            future = pubsub_publisher.publish(notification_topic_path, json.dumps(notification_payload).encode("utf-8"))
+            print(f"Published notification for seller {seller_id}. Message ID: {future.result()}")
+
+        print(f"Successfully inserted event for item '{row_to_insert['item']['item_id']}'.")
+        return json.dumps({"status": "success", "inserted": True}), 200, response_headers
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        return json.dumps({"status": "error", "message": str(e)}), 500, response_headers
